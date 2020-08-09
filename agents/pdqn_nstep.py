@@ -183,6 +183,7 @@ class PDQNNStepAgent(PDQNAgent):
         with torch.no_grad():
             pred_next_action_parameters = self.actor_param_target.forward(next_states)
             pred_Q_a = self.actor_target(next_states, pred_next_action_parameters)
+            # TODO 不清楚为什么采用截断的方式
             Qprime = torch.max(pred_Q_a, 1, keepdim=True)[0].squeeze()
 
             # compute TD error
@@ -206,6 +207,7 @@ class PDQNNStepAgent(PDQNAgent):
         with torch.no_grad():
             action_params = self.actor_param(states)
         action_params.requires_grad = True
+        # 判断条件是　其中一个为true 或者全部为false
         assert (self.weighted ^ self.average ^ self.random_weighted) or \
                 not (self.weighted or self.average or self.random_weighted)
         Q = self.actor(states, action_params)

@@ -8,7 +8,7 @@ import gym_soccer
 from gym.wrappers import Monitor
 import numpy as np
 
-
+# 根据动作类型选择参数
 def pad_action(act, act_param):
     action = np.zeros((7,))
     action[0] = act
@@ -65,9 +65,12 @@ def make_env(scale_actions):
 @click.option('--evaluation-episodes', default=1000, help='Episodes over which to evaluate after training.', type=int)
 @click.option('--batch-size', default=32, help='Minibatch size.', type=int)
 @click.option('--gamma', default=0.99, help='Discount factor.', type=float)
-@click.option('--update-ratio', default=0.1, help='Ratio of updates to samples.', type=float)
+# 计算td error的  target = rewards + (1 - terminals) * self.gamma * Qprime
+@click.option('--update-ratio', default=0.1, help='Ratio of updates to samples.结束espiode后更新step×ratio次', type=float)
 @click.option('--inverting-gradients', default=True,
               help='Use inverting gradients scheme instead of squashing function.', type=bool)
+# squashing 指利用激活函数输出为-1到1之间， inverting是指最后一层直接输出数字 没有激活函数。
+# 两者都是为了避免nan，提出的方法。可见论文“Deep Reinforcement Learning in Parameterized Action Space”
 @click.option('--initial-memory-threshold', default=1000, help='Number of transitions required to start learning.',
               type=int)
 @click.option('--use-ornstein-noise', default=False,
@@ -80,9 +83,13 @@ def make_env(scale_actions):
 @click.option('--learning-rate-actor', default=0.001, help="Actor network learning rate.", type=float)
 @click.option('--learning-rate-actor-param', default=0.00001, help="Critic network learning rate.", type=float)
 @click.option('--clip-grad', default=1., help="Gradient clipping.", type=float)  # 1 better than 10.
+# 梯度的限制范围，
 @click.option('--beta', default=0.2, help='Averaging factor for on-policy and off-policy targets.', type=float)  # 0.5
+# 这个我也不清楚这个同策略。可以多多尝试。
 @click.option('--scale-actions', default=True, help="Scale actions.", type=bool)
+# 通过gym的修饰器，将-1,1与原来的动作进行转换，
 @click.option('--split', default=False, help='Separate action-parameter inputs.', type=bool)
+# TODO 看论文
 @click.option('--multipass', default=True, help='Separate action-parameter inputs using multiple Q-network passes.', type=bool)
 @click.option('--indexed', default=False, help='Indexed loss function.', type=bool)
 @click.option('--weighted', default=False, help='Naive weighted loss function.', type=bool)
@@ -152,6 +159,7 @@ def run(seed, episodes, batch_size, gamma, inverting_gradients, initial_memory_t
                            zero_index_gradients=zero_index_gradients,
                            seed=seed)
     print(agent)
+    # print Network
     network_trainable_parameters = sum(p.numel() for p in agent.actor.parameters() if p.requires_grad)
     network_trainable_parameters += sum(p.numel() for p in agent.actor_param.parameters() if p.requires_grad)
     print("Total Trainable Network Parameters: %d" % network_trainable_parameters)
@@ -180,7 +188,7 @@ def run(seed, episodes, batch_size, gamma, inverting_gradients, initial_memory_t
             # status = info['status']
             # if status != 'IN_GAME':
             #     print(status)
-
+            # TODO 看看最后的参数是什么意思 可以。next_all_action_parameters
             next_act, next_act_param, next_all_action_parameters = agent.act(next_state)
             next_action = pad_action(next_act, next_act_param)
             transitions.append([state, np.concatenate(([act], all_action_parameters.data)).ravel(), reward,
@@ -198,6 +206,7 @@ def run(seed, episodes, batch_size, gamma, inverting_gradients, initial_memory_t
         agent.end_episode()
 
         # calculate n-step returns
+        # 它是先搞个transition 用于更新n step return 之后存到replay_memory里
         n_step_returns = compute_n_step_returns(transitions, gamma)
         for t, nsr in zip(transitions, n_step_returns):
             t.append(nsr)
