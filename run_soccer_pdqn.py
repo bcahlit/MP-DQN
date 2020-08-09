@@ -93,10 +93,13 @@ def make_env(scale_actions):
 @click.option('--multipass', default=True, help='Separate action-parameter inputs using multiple Q-network passes.', type=bool)
 @click.option('--indexed', default=False, help='Indexed loss function.', type=bool)
 @click.option('--weighted', default=False, help='Naive weighted loss function.', type=bool)
+# 不清楚什么作用，可以看看。
 @click.option('--average', default=False, help='Average weighted loss function.', type=bool)
 @click.option('--random-weighted', default=False, help='Randomly weighted loss function.', type=bool)
 @click.option('--zero-index-gradients', default=False, help="Whether to zero all gradients for action-parameters not corresponding to the chosen action.", type=bool)
+# 以上三个，只会执行一个所以要求最多有一个为true
 @click.option('--action-input-layer', default=0, help='Which layer to input action parameters at when using split Q-networks.', type=int)
+# 与split配合的
 @click.option('--layers', default="[256,128,64]", help='Duplicate action-parameter inputs.', cls=ClickPythonLiteralOption)
 @click.option('--save-freq', default=0, help='How often to save models (0 = never).', type=int)
 @click.option('--save-dir', default="results/soccer", help='Output directory.', type=str)
