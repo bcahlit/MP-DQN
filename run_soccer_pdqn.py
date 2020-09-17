@@ -96,8 +96,8 @@ def make_env(scale_actions):
 # 不清楚什么作用，可以看看。
 @click.option('--average', default=False, help='Average weighted loss function.', type=bool)
 @click.option('--random-weighted', default=False, help='Randomly weighted loss function.', type=bool)
-@click.option('--zero-index-gradients', default=False, help="Whether to zero all gradients for action-parameters not corresponding to the chosen action.", type=bool)
 # 以上三个，只会执行一个所以要求最多有一个为true
+@click.option('--zero-index-gradients', default=False, help="Whether to zero all gradients for action-parameters not corresponding to the chosen action.", type=bool)
 @click.option('--action-input-layer', default=0, help='Which layer to input action parameters at when using split Q-networks.', type=int)
 # 与split配合的
 @click.option('--layers', default="[256,128,64]", help='Duplicate action-parameter inputs.', cls=ClickPythonLiteralOption)
@@ -180,7 +180,11 @@ def run(seed, episodes, batch_size, gamma, inverting_gradients, initial_memory_t
         state = env.reset()
         state = np.array(state, dtype=np.float32, copy=False)
 
+        # act int 执行的动作编号
+        # act_param 选定动作的参数
+        # all_action_paramteres 所有动作的参数。
         act, act_param, all_action_parameters = agent.act(state)
+        #  action 中第一个是动作，其余为动作参数。
         action = pad_action(act,act_param)
         episode_reward = 0.
         agent.start_episode()
@@ -191,7 +195,6 @@ def run(seed, episodes, batch_size, gamma, inverting_gradients, initial_memory_t
             # status = info['status']
             # if status != 'IN_GAME':
             #     print(status)
-            # TODO 看看最后的参数是什么意思 可以。next_all_action_parameters
             next_act, next_act_param, next_all_action_parameters = agent.act(next_state)
             next_action = pad_action(next_act, next_act_param)
             transitions.append([state, np.concatenate(([act], all_action_parameters.data)).ravel(), reward,
