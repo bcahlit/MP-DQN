@@ -92,6 +92,8 @@ class SoccerScaledParameterisedActionWrapper(gym.ActionWrapper):
         elif p == 2:
             action[4] = self.range[2][0] * (action[4] + 1) / 2. + self.low[2][0]
             action[5] = self.range[2][1] * (action[5] + 1) / 2. + self.low[2][1]
+        elif p == 3:
+            action[6] = self.range[3][0] * (action[6] + 1) / 2. + self.low[3][0]
         else:
             raise ValueError("Unhandled action", p)
         return action

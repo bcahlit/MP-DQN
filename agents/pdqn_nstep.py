@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 
-from agents.memory.memory import MemoryNStepReturns
+from agents.memory.memory import MemoryNStepReturns, BatchNStepReturns
 from agents.pdqn import PDQNAgent
 from agents.utils import soft_update_target_network
 
@@ -144,6 +144,7 @@ class PDQNNStepAgent(PDQNAgent):
     def __init__(self,
                  *args,
                  beta=0.5,
+                 export_trace="",
                  **kwargs):
         super().__init__(*args, actor_class=QActorNonDueling, actor_param_class=ParamActor, **kwargs)
         self.beta = beta
@@ -152,6 +153,11 @@ class PDQNNStepAgent(PDQNAgent):
         self.replay_memory = MemoryNStepReturns(self.replay_memory_size, self.observation_space.shape,
                                                 (1+self.action_parameter_size,),
                                                 next_actions=False, n_step_returns=True)
+        self.offlien = False
+        if export_trace!= "":
+            self.offlien = True
+            self.batch_memory = BatchNStepReturns(0)
+            self.batch_memory.load(export_trace)
 
     def __str__(self):
         desc = super().__str__()
@@ -166,18 +172,23 @@ class PDQNNStepAgent(PDQNAgent):
     def _optimize_td_loss(self):
         if self.replay_memory.nb_entries < self.batch_size or \
                 self.replay_memory.nb_entries < self.initial_memory_threshold:
-            return
-        # Sample a batch from replay memory
-        states, actions, rewards, next_states, terminals, n_step_returns = self.replay_memory.sample(self.batch_size, random_machine=self.np_random)
+            # sample a batch form export policy
+            if self.offlien:
+                states, actions, rewards, next_states, terminals, n_step_returns = self.batch_memory.sample(self.batch_size, random_machine=self.np_random)
+            else:
+                return
+        else:
+            # Sample a batch from replay memory
+            states, actions, rewards, next_states, terminals, n_step_returns = self.replay_memory.sample(self.batch_size, random_machine=self.np_random)
 
-        states = torch.from_numpy(states).to(device)
-        actions_combined = torch.from_numpy(actions).to(device)  # make sure to separate actions and action-parameters
+        states = torch.from_numpy(states).float().to(device)
+        actions_combined = torch.from_numpy(actions).float().to(device)  # make sure to separate actions and action-parameters
         actions = actions_combined[:, 0].long()
-        action_parameters = actions_combined[:, 1:]
-        rewards = torch.from_numpy(rewards).to(device).squeeze()
-        next_states = torch.from_numpy(next_states).to(device)
-        terminals = torch.from_numpy(terminals).to(device).squeeze()
-        n_step_returns = torch.from_numpy(n_step_returns).to(device)
+        action_parameters = actions_combined[:, 1:].float()
+        rewards = torch.from_numpy(rewards).float().to(device).squeeze()
+        next_states = torch.from_numpy(next_states).float().to(device)
+        terminals = torch.from_numpy(terminals).float().to(device).squeeze()
+        n_step_returns = torch.from_numpy(n_step_returns).float().to(device)
 
         # ---------------------- optimise critic ----------------------
         with torch.no_grad():

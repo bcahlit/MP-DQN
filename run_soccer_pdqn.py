@@ -52,10 +52,10 @@ def evaluate(env, agent, episodes=10):
 
 def make_env(scale_actions):
     # env = gym.make('SoccerEmptyGoal-v0')
-    env = gym.make('SoccerScoreGoal-v0')
-    # 1agent vs 1 goal
-    #  env = gym.make('SoccerAgainstKeeper-v0')
     # 1agent vs 0 goal
+    #  env = gym.make('SoccerScoreGoal-v0')
+    # 1agent vs 1 goal
+    env = gym.make('SoccerAgainstKeeper-v0')
     # env = ScaledStateWrapper(env)  # already scaled
     if scale_actions:
         env = SoccerScaledParameterisedActionWrapper(env)
@@ -107,11 +107,12 @@ def make_env(scale_actions):
 @click.option('--save-freq', default=0, help='How often to save models (0 = never).', type=int)
 @click.option('--save-dir', default="results/soccer", help='Output directory.', type=str)
 @click.option('--title', default="PDQN", help="Prefix of output files", type=str)
+@click.option('--export-trace', default="", help="存放专家轨迹的npz文件位置", type=str)
 def run(seed, episodes, batch_size, gamma, inverting_gradients, initial_memory_threshold, replay_memory_size,
         epsilon_steps, tau_actor, tau_actor_param, use_ornstein_noise, learning_rate_actor, learning_rate_actor_param, title, epsilon_final,
         clip_grad, beta, scale_actions, split, indexed, zero_index_gradients, action_input_layer,
         evaluation_episodes, multipass, weighted, average, random_weighted, update_ratio,
-        save_freq, save_dir, layers):
+        save_freq, save_dir, layers, export_trace):
 
     if save_freq > 0 and save_dir:
         save_dir = os.path.join(save_dir, title + "{}".format(str(seed)))
@@ -163,7 +164,8 @@ def run(seed, episodes, batch_size, gamma, inverting_gradients, initial_memory_t
                            replay_memory_size=replay_memory_size,
                            inverting_gradients=inverting_gradients,
                            zero_index_gradients=zero_index_gradients,
-                           seed=seed)
+                           seed=seed,
+                           export_trace=export_trace)
     print(agent)
     # print Network
     if save_freq > 0 and save_dir:

@@ -197,7 +197,7 @@ class MemoryNStepReturns(object):
         if next_actions is not None:
             ret.append(next_actions)
         ret.append(terminals_batch)
-        if time_steps is not None:
+        if time_steps is not None and time_steps != 0:
             ret.append(time_steps)
         if n_step_returns is not None:
             ret.append(n_step_returns)
@@ -218,6 +218,83 @@ class MemoryNStepReturns(object):
         if self.n_step_returns is not None:
             assert n_step_return is not None
             self.n_step_returns.append(n_step_return)
+
+    @property
+    def nb_entries(self):
+        return len(self.states)
+
+class BatchNStepReturns(object):
+    def __init__(self,
+                 limit):
+        self.limit = limit
+
+        self.states = None  # RingBuffer(limit, shape=observation_shape)
+        self.actions = None  # RingBuffer(limit, shape=action_shape)
+        self.rewards = None  # RingBuffer(limit, shape=(1,))
+        self.next_states = None  # RingBuffer(limit, shape=observation_shape)
+        # RingBuffer(limit, shape=action_shape) if next_actions else None
+        self.next_actions = None
+        # RingBuffer(limit, shape=(1,)) if time_steps else None
+        self.time_steps = 0
+        self.terminals = None  # RingBuffer(limit, shape=(1,))
+        # RingBuffer(limit, shape=(1,)) if n_step_returns else None
+        self.n_step_returns = None
+
+    def sample(self, batch_size, random_machine=np.random):
+        # Draw such that we always have a proceeding element.
+        # batch_idxs = random_machine.random_integers(self.nb_entries - 2, size=batch_size)
+        batch_idxs = random_machine.choice(self.nb_entries,
+                                           size=batch_size)
+        # batch_idxs = random_machine.choice(self.nb_entries, weights=[i/self.nb_entries for i in range(self.nb_entries)], size=batch_size)
+        '''states_batch = array_min2d(self.states.get_batch(batch_idxs))
+        actions_batch = array_min2d(self.actions.get_batch(batch_idxs))
+        rewards_batch = array_min2d(self.rewards.get_batch(batch_idxs))
+        next_states_batch = array_min2d(self.next_states.get_batch(batch_idxs))
+        terminals_batch = array_min2d(self.terminals.get_batch(batch_idxs))'''
+        states_batch = self.states[batch_idxs]
+        actions_batch = self.actions[batch_idxs]
+        rewards_batch = self.rewards[batch_idxs]
+        next_states_batch = self.next_states[batch_idxs]
+        #  next_actions = self.next_actions[
+            #  batch_idxs] if self.next_actions is not None else None
+        terminals_batch = self.terminals[batch_idxs]
+        time_steps = self.time_steps[
+            batch_idxs] if self.time_steps is not None else None
+        n_step_returns = self.n_step_returns[
+            batch_idxs] if self.n_step_returns is not None else None
+
+        ret = [states_batch, actions_batch, rewards_batch, next_states_batch]
+        #  if next_actions is not None:
+            #  ret.append(next_actions)
+        ret.append(terminals_batch)
+        if time_steps is not None:
+            ret.append(time_steps)
+        if n_step_returns is not None:
+            ret.append(n_step_returns)
+        return tuple(ret)
+
+    def save(self, save_name):
+        np.savez_compressed(save_name,
+                 states=self.states,
+                 actions=self.actions,
+                 rewards=self.rewards,
+                 next_states=self.next_states,
+                 next_actions=self.next_actions,
+                 time_steps=self.time_steps,
+                 terminals=self.terminals,
+                 n_step_returns=self.n_step_returns)
+
+    def load(self, save_name):
+        npzfile = np.load(save_name + ".npz")
+        self.states = npzfile['states']
+        self.actions = npzfile['actions']
+        self.rewards = npzfile['rewards']
+        self.next_states = npzfile['next_states']
+        self.next_actions = npzfile['next_actions']
+        self.time_steps = npzfile[
+            'time_steps'] if npzfile['time_steps'] != 0 else None
+        self.terminals = npzfile['terminals']
+        self.n_step_returns = npzfile['n_step_returns']
 
     @property
     def nb_entries(self):
