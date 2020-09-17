@@ -53,6 +53,9 @@ def evaluate(env, agent, episodes=10):
 def make_env(scale_actions):
     # env = gym.make('SoccerEmptyGoal-v0')
     env = gym.make('SoccerScoreGoal-v0')
+    # 1agent vs 1 goal
+    #  env = gym.make('SoccerAgainstKeeper-v0')
+    # 1agent vs 0 goal
     # env = ScaledStateWrapper(env)  # already scaled
     if scale_actions:
         env = SoccerScaledParameterisedActionWrapper(env)
@@ -163,6 +166,9 @@ def run(seed, episodes, batch_size, gamma, inverting_gradients, initial_memory_t
                            seed=seed)
     print(agent)
     # print Network
+    if save_freq > 0 and save_dir:
+        print("loading model")
+        agent.load_models(os.path.join(save_dir,str(2000)))
     network_trainable_parameters = sum(p.numel() for p in agent.actor.parameters() if p.requires_grad)
     network_trainable_parameters += sum(p.numel() for p in agent.actor_param.parameters() if p.requires_grad)
     print("Total Trainable Network Parameters: %d" % network_trainable_parameters)
