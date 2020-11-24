@@ -136,6 +136,7 @@ def run(seed, episodes, batch_size, gamma, inverting_gradients, initial_memory_t
     assert action_input_layer >= 0
     if action_input_layer > 0:
         assert split
+    print("env.action_space", env.action_space)
     agent = agent_class(
                            env.observation_space, env.action_space,
                            actor_kwargs={"hidden_layers": layers,
@@ -168,9 +169,9 @@ def run(seed, episodes, batch_size, gamma, inverting_gradients, initial_memory_t
                            export_trace=export_trace)
     print(agent)
     # print Network
-    if save_freq > 0 and save_dir:
-        print("loading model")
-        agent.load_models(os.path.join(save_dir,str(2000)))
+    #  if save_freq > 0 and save_dir:
+        #  print("loading model")
+        #  agent.load_models(os.path.join(save_dir,str(2000)))
     network_trainable_parameters = sum(p.numel() for p in agent.actor.parameters() if p.requires_grad)
     network_trainable_parameters += sum(p.numel() for p in agent.actor_param.parameters() if p.requires_grad)
     print("Total Trainable Network Parameters: %d" % network_trainable_parameters)
@@ -180,6 +181,11 @@ def run(seed, episodes, batch_size, gamma, inverting_gradients, initial_memory_t
     timesteps = []
     goals = []
     start_time_train = time.time()
+    if export_trace != "":
+        batch_memory_size = agent.batch_memory.nb_entries
+        n_updates = int(update_ratio*batch_memory_size)
+        for _ in range(n_updates):
+            agent._optimize_td_loss()
 
     for i in range(episodes):
         if save_freq > 0 and save_dir and i % save_freq == 0:

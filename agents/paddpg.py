@@ -8,7 +8,7 @@ import random
 from torch.autograd import Variable
 
 from agents.agent import Agent
-from agents.memory.memory import Memory, MemoryNStepReturns
+from agents.memory.memory import Memory, MemoryNStepReturns, BatchNStepReturns
 from agents.utils import soft_update_target_network, hard_update_target_network
 from agents.utils.noise import OrnsteinUhlenbeckActionNoise
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -174,7 +174,8 @@ class PADDPGAgent(Agent):
                  loss_func=F.mse_loss,  # F.smooth_l1_loss
                  inverting_gradients=False,
                  n_step_returns=False,
-                 seed=None):
+                 seed=None,
+                 export_trace="",):
         super(PADDPGAgent, self).__init__(observation_space, action_space)
 
         self.num_actions = self.action_space.spaces[0].n
@@ -223,6 +224,15 @@ class PADDPGAgent(Agent):
             self.replay_memory = MemoryNStepReturns(replay_memory_size, observation_space.shape, (self.num_actions+self.action_parameter_size,), next_actions=False, n_step_returns=self.n_step_returns)
         else:
             self.replay_memory = replay_memory
+
+        # 加载脱机的数据
+        self.offlien = False
+        if export_trace!= "":
+            self.export_trace = export_trace
+            self.offlien = True
+            self.batch_memory = BatchNStepReturns(0)
+            self.batch_memory.load(export_trace)
+
         self.actor = actor_class(self.observation_space.shape[0], self.num_actions, self.action_parameter_size, **actor_kwargs).to(device)
         self.actor_target = actor_class(self.observation_space.shape[0], self.num_actions, self.action_parameter_size, **actor_kwargs).to(device)
         hard_update_target_network(self.actor, self.actor_target)
@@ -256,7 +266,8 @@ class PADDPGAgent(Agent):
                 "Clip norm: {}\n".format(self.clip_grad) +
                 "Batch Size: {}\n".format(self.batch_size) +
                 "Ornstein Noise?: {}\n".format(self.use_ornstein_noise) +
-                "Seed: {}\n".format(self.seed))
+                "Seed: {}\n".format(self.seed) +
+                "export_trace: {}\n".format(self.export_trace))
         return desc
 
     def set_action_parameter_passthrough_weights(self, initial_weights, initial_bias=None):
@@ -374,40 +385,47 @@ class PADDPGAgent(Agent):
         self.replay_memory.append(state, action, reward, next_state, terminal)
 
     def _optimize_td_loss(self):
+        # 样本量不够时
         if self.replay_memory.nb_entries < self.batch_size or \
                 self.replay_memory.nb_entries < self.initial_memory_threshold:
-            return
-
-        # Sample a batch from replay memory
-        if self.n_step_returns:
-            states, actions, rewards, next_states, terminals, n_step_returns = self.replay_memory.sample(self.batch_size, random_machine=self.np_random)
+            if self.offlien:
+                states, actions, rewards, next_states, terminals, n_step_returns = self.batch_memory.sample(self.batch_size, random_machine=self.np_random)
+            else:
+                return
         else:
-            states, actions, rewards, next_states, terminals = self.replay_memory.sample(self.batch_size, random_machine=self.np_random)
-            n_step_returns = None
+            # Sample a batch from replay memory
+            if self.n_step_returns:
+                states, actions, rewards, next_states, terminals, n_step_returns = self.replay_memory.sample(self.batch_size, random_machine=self.np_random)
+            else:
+                states, actions, rewards, next_states, terminals = self.replay_memory.sample(self.batch_size, random_machine=self.np_random)
+                n_step_returns = None
 
-        states = torch.from_numpy(states).to(device)
-        actions_combined = torch.from_numpy(actions).to(device)  # make sure to separate actions and action-parameters
+        states = torch.from_numpy(states).float().to(device)
+        actions_combined = torch.from_numpy(actions).float().to(device)  # make sure to separate actions and action-parameters
         actions = actions_combined[:,:self.num_actions]
         action_parameters = actions_combined[:, self.num_actions:]
-        rewards = torch.from_numpy(rewards).to(device)
-        next_states = torch.from_numpy(next_states).to(device)
-        terminals = torch.from_numpy(terminals).to(device)
+        rewards = torch.from_numpy(rewards).float().to(device).unsqueeze(-1)
+        next_states = torch.from_numpy(next_states).float().to(device)
+        terminals = torch.from_numpy(terminals).float().to(device).unsqueeze(-1)
         if self.n_step_returns:
-            n_step_returns = torch.from_numpy(n_step_returns).to(device)
+            n_step_returns = torch.from_numpy(n_step_returns).float().to(device).unsqueeze(-1)
 
         # ---------------------- optimize critic ----------------------
         with torch.no_grad():
             pred_next_actions, pred_next_action_parameters = self.actor_target.forward(next_states)
             off_policy_next_val = self.critic_target.forward(next_states, pred_next_actions, pred_next_action_parameters)
             off_policy_target = rewards + (1 - terminals) * self.gamma * off_policy_next_val
+            # print("off_policy_target",off_policy_next_val.shape, off_policy_target.shape, rewards.shape)
             if self.n_step_returns:
                 on_policy_target = n_step_returns
+                # print("on_policy_target",on_policy_target.shape, off_policy_target.shape, rewards.shape)
                 target = self.beta*on_policy_target + (1.-self.beta) * off_policy_target
             else:
                 target = off_policy_target
 
         y_expected = target
         y_predicted = self.critic.forward(states, actions, action_parameters)
+        # print("y_predicted", y_predicted.shape, y_expected.shape, states.shape, actions.shape, action_parameters.shape)
         loss_critic = self.loss_func(y_predicted, y_expected)
 
         self.critic_optimiser.zero_grad()

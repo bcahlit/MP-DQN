@@ -81,9 +81,11 @@ def evaluate(env, agent, episodes=10):
               cls=ClickPythonLiteralOption)
 @click.option('--save-dir', default="results/soccer", help='Output directory.', type=str)
 @click.option('--title', default="PADDPG", help="Prefix of output files", type=str)
+@click.option('--export-trace', default="", help="存放专家轨迹的npz文件位置", type=str)
 def run(seed, episodes, batch_size, gamma, beta, use_ornstein_noise, inverting_gradients, initial_memory_threshold,
         replay_memory_size, tau, learning_rate_actor, learning_rate_critic, epsilon_steps, epsilon_final,
-        n_step_returns, clip_grad, scale_actions, layers, evaluation_episodes, update_ratio, save_dir, title):
+        n_step_returns, clip_grad, scale_actions, layers, evaluation_episodes, update_ratio, save_dir, title,
+        export_trace):
     kill_soccer_server()
 
     # env = gym.make('Soccer-v0')
@@ -119,7 +121,8 @@ def run(seed, episodes, batch_size, gamma, beta, use_ornstein_noise, inverting_g
                         clip_grad=clip_grad,
                         use_ornstein_noise=use_ornstein_noise,
                         adam_betas=(0.9, 0.999),  # default 0.95,0.999
-                        seed=seed)
+                        seed=seed,
+                        export_trace=export_trace)
     print(agent)
     max_steps = 15000
     total_reward = 0.
@@ -129,6 +132,13 @@ def run(seed, episodes, batch_size, gamma, beta, use_ornstein_noise, inverting_g
     start_time_train = time.time()
     from tqdm import tqdm
     # for i in tqdm(range(episodes)):
+    # 使用离线数据进行预训练
+    if export_trace != "":
+        batch_memory_size = agent.batch_memory.nb_entries
+        n_updates = int(update_ratio*batch_memory_size)
+        for _ in range(n_updates):
+            agent._optimize_td_loss()
+
     for i in range(episodes):
         info = {'status': "NOT_SET"}
         state = env.reset()
