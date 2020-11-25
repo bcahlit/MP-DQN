@@ -225,10 +225,10 @@ class PADDPGAgent(Agent):
         else:
             self.replay_memory = replay_memory
 
+        self.export_trace = export_trace
         # 加载脱机的数据
         self.offlien = False
         if export_trace!= "":
-            self.export_trace = export_trace
             self.offlien = True
             self.batch_memory = BatchNStepReturns(0)
             self.batch_memory.load(export_trace)
@@ -404,28 +404,34 @@ class PADDPGAgent(Agent):
         actions_combined = torch.from_numpy(actions).float().to(device)  # make sure to separate actions and action-parameters
         actions = actions_combined[:,:self.num_actions]
         action_parameters = actions_combined[:, self.num_actions:]
-        rewards = torch.from_numpy(rewards).float().to(device).unsqueeze(-1)
+        rewards = torch.from_numpy(rewards).float().to(device)
+        if len(rewards.shape)==1:
+            rewards = rewards.unsqueeze(-1)
         next_states = torch.from_numpy(next_states).float().to(device)
-        terminals = torch.from_numpy(terminals).float().to(device).unsqueeze(-1)
+        terminals = torch.from_numpy(terminals).float().to(device)
+        if len(terminals.shape)==1:
+            terminals = terminals.unsqueeze(-1)
         if self.n_step_returns:
-            n_step_returns = torch.from_numpy(n_step_returns).float().to(device).unsqueeze(-1)
+            n_step_returns = torch.from_numpy(n_step_returns).float().to(device)
+            if len(n_step_returns.shape) == 1:
+                n_step_returns=n_step_returns.unsqueeze(-1)
 
         # ---------------------- optimize critic ----------------------
         with torch.no_grad():
             pred_next_actions, pred_next_action_parameters = self.actor_target.forward(next_states)
             off_policy_next_val = self.critic_target.forward(next_states, pred_next_actions, pred_next_action_parameters)
             off_policy_target = rewards + (1 - terminals) * self.gamma * off_policy_next_val
-            # print("off_policy_target",off_policy_next_val.shape, off_policy_target.shape, rewards.shape)
+            #  print("off_policy_target",off_policy_next_val.shape, off_policy_target.shape, rewards.shape)
             if self.n_step_returns:
                 on_policy_target = n_step_returns
-                # print("on_policy_target",on_policy_target.shape, off_policy_target.shape, rewards.shape)
+                #  print("on_policy_target",on_policy_target.shape, off_policy_target.shape, rewards.shape)
                 target = self.beta*on_policy_target + (1.-self.beta) * off_policy_target
             else:
                 target = off_policy_target
 
         y_expected = target
         y_predicted = self.critic.forward(states, actions, action_parameters)
-        # print("y_predicted", y_predicted.shape, y_expected.shape, states.shape, actions.shape, action_parameters.shape)
+        #  print("y_predicted", y_predicted.shape, y_expected.shape, states.shape, actions.shape, action_parameters.shape)
         loss_critic = self.loss_func(y_predicted, y_expected)
 
         self.critic_optimiser.zero_grad()
