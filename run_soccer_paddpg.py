@@ -179,7 +179,6 @@ def run(seed, episodes, batch_size, gamma, beta, use_ornstein_noise, inverting_g
             if terminal:
                 break
         agent.end_episode()
-
         # calculate n-step returns
         if n_step_returns:
             nsreturns = compute_n_step_returns(transitions, gamma)
@@ -197,8 +196,11 @@ def run(seed, episodes, batch_size, gamma, beta, use_ornstein_noise, inverting_g
         goals.append(info['status'] == 'GOAL')
 
         total_reward += episode_reward
+        if i % 5000 == 0:
+            agent.replay_memory.save("run_replaybuffer_"+str(i))
         if i % 100 == 0:
             print('{0:5s} R:{1:.4f} r:{2:.4f}'.format(str(i + 1), total_reward / (i + 1), episode_reward))
+    agent.replay_memory.save("run_replaybuffer_"+str(episodes))
     end_time_train = time.time()
 
     returns = env.get_episode_rewards()

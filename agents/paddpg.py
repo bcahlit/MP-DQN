@@ -155,7 +155,7 @@ class PADDPGAgent(Agent):
                  actor_kwargs={},
                  critic_class=Critic,
                  critic_kwargs={},
-                 epsilon_initial=1.0,
+                 epsilon_initial=0.1,
                  epsilon_final=0.01,
                  epsilon_steps=10000,
                  batch_size=64,
@@ -386,10 +386,12 @@ class PADDPGAgent(Agent):
 
     def _optimize_td_loss(self):
         # 样本量不够时
+        expert_trace = False
         if self.replay_memory.nb_entries < self.batch_size or \
                 self.replay_memory.nb_entries < self.initial_memory_threshold:
             if self.offlien:
                 states, actions, rewards, next_states, terminals, n_step_returns = self.batch_memory.sample(self.batch_size, random_machine=self.np_random)
+                expert_trace = True
             else:
                 return
         else:
@@ -442,23 +444,35 @@ class PADDPGAgent(Agent):
 
         # ---------------------- optimise actor ----------------------
         # 1 - calculate gradients from critic
-        with torch.no_grad():
+        if expert_trace:
             actions, action_params = self.actor(states)
+            # 一种方案
             action_params = torch.cat((actions, action_params), dim=1)
-        action_params.requires_grad = True
-        Q_val = self.critic(states, action_params[:, :self.num_actions], action_params[:, self.num_actions:]).mean()
-        self.critic.zero_grad()
-        Q_val.backward()
-        from copy import deepcopy
-        delta_a = deepcopy(action_params.grad.data)
-        # 2 - apply inverting gradients and combine with gradients from actor
-        actions, action_params = self.actor(Variable(states))
-        action_params = torch.cat((actions, action_params), dim=1)
-        delta_a[:, self.num_actions:] = self._invert_gradients(delta_a[:, self.num_actions:].cpu(), action_params[:, self.num_actions:].cpu(), grad_type="action_parameters", inplace=True)
-        delta_a[:, :self.num_actions] = self._invert_gradients(delta_a[:, :self.num_actions].cpu(), action_params[:, :self.num_actions].cpu(), grad_type="actions", inplace=True)
-        out = -torch.mul(delta_a, action_params)
-        self.actor.zero_grad()
-        out.backward(torch.ones(out.shape).to(device))
+            loss_actor = self.loss_func(action_params, actions_combined)
+            # 另一种 参数损失挺大的，可能有一些干扰，所以/100
+            #  loss_actor = self.loss_func(actions, actions_combined[:,:self.num_actions]) + self.loss_func(action_params, actions_combined[:, self.num_actions:])/100
+            
+            self.actor.zero_grad()
+            loss_actor.backward()
+        else:
+            # 使用普通轨迹时的操作
+            with torch.no_grad():
+                actions, action_params = self.actor(states)
+                action_params = torch.cat((actions, action_params), dim=1)
+            action_params.requires_grad = True
+            Q_val = self.critic(states, action_params[:, :self.num_actions], action_params[:, self.num_actions:]).mean()
+            self.critic.zero_grad()
+            Q_val.backward()
+            from copy import deepcopy
+            delta_a = deepcopy(action_params.grad.data)
+            # 2 - apply inverting gradients and combine with gradients from actor
+            actions, action_params = self.actor(Variable(states))
+            action_params = torch.cat((actions, action_params), dim=1)
+            delta_a[:, self.num_actions:] = self._invert_gradients(delta_a[:, self.num_actions:].cpu(), action_params[:, self.num_actions:].cpu(), grad_type="action_parameters", inplace=True)
+            delta_a[:, :self.num_actions] = self._invert_gradients(delta_a[:, :self.num_actions].cpu(), action_params[:, :self.num_actions].cpu(), grad_type="actions", inplace=True)
+            out = -torch.mul(delta_a, action_params)
+            self.actor.zero_grad()
+            out.backward(torch.ones(out.shape).to(device))
 
         if self.clip_grad > 0:
             torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.clip_grad)
